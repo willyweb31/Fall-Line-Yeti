@@ -4,7 +4,7 @@ Version 2 (3D carving build), 2026-11-11
 
 ## 1. What it is
 
-A 3D endless snowboard runner. The rider carves freely across an open slope, dodging obstacles while a yeti chases from behind. Each crash lets the yeti close the gap. When the gap hits zero the run ends.
+A 3D endless snowboard runner. The rider swipes between five lanes on an open slope, dodging obstacles while a yeti chases from behind. Each crash lets the yeti close the gap. When the gap hits zero the run ends.
 
 - **Platform:** browser, desktop and phone
 - **Stack:** plain JavaScript (ES6+), Three.js r128 (WebGL), HTML and CSS for menus and HUD, Web Audio for sound
@@ -25,25 +25,27 @@ To run with a local server instead of double-clicking: `npx serve .` in this fol
 
 | Action | Keyboard | Touch or mouse |
 |---|---|---|
-| Carve left/right | Hold Left/Right or A/D | Drag sideways (55 px = full steer) |
-| Jump | Up, W, or Space | Flick up (34 px) |
-| Tuck | Down or S | Flick down (34 px) |
-| Fast-drop in air | Down while airborne | Flick down while airborne |
+| Change lane | Press Left/Right or A/D (one lane per press) | Swipe left/right (22 px) |
+| Jump | Up, W, or Space | Swipe up (22 px) |
+| Tuck | Down or S | Swipe down (22 px) |
+| Fast-drop in air | Down while airborne | Swipe down while airborne |
+
+One action per swipe. Lift your finger and swipe again for the next one.
 | Pause | P or Esc | Pause button |
 
 ## 4. Core mechanics
 
-### 4.1 Carving model (`stepRun`)
+### 4.1 Lane model (`stepRun`)
 
-Two-stage lag gives the slidey feel:
+Five lanes, `LANE_W = 2.1` apart (x = -4.2 to 4.2). `G.lane` runs -2 to 2. `move(dir)` changes it by one.
 
-1. Board angle `G.yaw` eases toward `steer * 0.62` rad. Rate 8/s on snow, 2.5/s in the air.
-2. Sideways speed `G.vx` eases toward `yaw / 0.62 * latMax`. Rate 6/s on snow, 1.2/s in the air, halved while stumbling.
+1. Wanted sideways speed = `(laneX - x) * 10`, capped at `latMax * 1.5` (halved while stumbling).
+2. `G.vx` eases toward it at 20/s on snow, 10/s in the air. One lane takes about 0.2 s.
+3. Board angle `G.yaw` follows `vx / latMax` for the carve look.
 
-- `latMax = 6 + speed * 0.16` (units/s), so faster runs carve wider.
+- `latMax = 6 + speed * 0.16` (units/s).
 - `G.skid = wanted vx - actual vx`. It drives the visual board over-rotation and the spray amount.
-- Slope half-width is `HALF = 5.3`. Hitting the edge reverses 20% of `vx`.
-- To make it grippier, raise the 6. To make it driftier, lower it.
+- Faster lane changes: raise the `10` gain and the `20` rate together, keeping rate about 2x gain or the glide overshoots.
 
 ### 4.2 Jump and tuck
 
@@ -94,7 +96,7 @@ The rider adds 0.25 to each half-width. Collision is a swept check on z, so fast
 
 Rows spawn at z = -135 and scroll toward the rider at z = 0.
 
-1. Move the safe line `G.pathX` by a random step, capped at what the rider can reach in the time between rows (`rowTime * latMax * 0.55`, max 4.2).
+1. Move the safe line `G.pathX` to a lane, a random number of lanes away (at least 1 allowed, more if `rowTime * latMax * 0.55` covers them).
 2. Place `2 + round(prog * 2.5) + coin flip` obstacles at random x, rejecting any that overlap the safe line (half-width 1.55 shrinking to 1.2) or each other.
 3. With probability `0.10 + 0.42 * prog`, put a log, gate, or rock on the safe line itself, forcing a jump or tuck.
 4. Either drop a power-up (every 520 to 900 m) or, 65% of the time, a line of five snowflakes tracing the safe line.
@@ -103,7 +105,7 @@ This guarantees one survivable line per row. It does not guarantee the line is c
 
 ### 4.7 Snowballs (`throwBall`)
 
-The yeti throws at the rider's predicted x. A red ring marks the landing spot for 1.1 s. Being within 1.0 unit at impact (and below jump height 1.0) counts as a hit.
+The yeti throws at the rider's current lane. A red ring marks the landing spot for 1.1 s. Being within 1.0 unit at impact (and below jump height 1.0) counts as a hit.
 
 ### 4.8 Pickups
 
@@ -181,8 +183,8 @@ Defined by `SCHEMA` and `DEF`. Adding an option means adding to the schema and h
 
 | Want | Change |
 |---|---|
-| Tighter steering | Raise the `6` and `8` rates in the carving block of `stepRun` |
-| More drift | Lower the `6` rate, or raise the skid multiplier `0.04` in `render` |
+| Snappier lane changes | Raise the `10` gain and `20` rate in the lane block of `stepRun` |
+| More lanes or wider lanes | `LANE_MAX` and `LANE_W` (keep `LANE_MAX * LANE_W` under `HALF = 5.3`) |
 | Easier rows | Raise the safe half-width `lerp(1.55, 1.2, p)` in `spawnRow` |
 | Fewer forced jumps | Lower `0.1 + 0.42 * p` in `spawnRow` |
 | Slower ramp | Lower `ramp` in `DIFFS` |
